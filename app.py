@@ -1,3 +1,4 @@
+from dotenv import load_dotenv
 import pandas as pd
 import streamlit as st
 import PyPDF2
@@ -10,33 +11,6 @@ import numpy as np
 from sqlalchemy import create_engine, MetaData, Table, text
 from sqlalchemy.orm import sessionmaker
 import mysql.connector
-
-# Database credentials
-# mydb = mysql.connector.connect(
-#   host="localhost",
-#   user="root",
-#   password="root",
-#   database="emp"
-# )
-
-
-# # Define connection parameters
-# DATABASE_URI = 'mysql+mysqlconnector://root:root@localhost/emp'
-
-# # Create an engine to connect to the MySQL database
-# engine = create_engine(DATABASE_URI)
-
-# Create a session
-# Session = sessionmaker(bind=engine)
-# session = Session()
-
-# # Create a metadata object to reflect tables
-# metadata = MetaData()
-# metadata.reflect(bind=engine)
-
-# Session = sessionmaker(bind=engine)
-
-
 
 
 def extract_text_from_pdf(file):
@@ -87,7 +61,10 @@ def generate_prompt_template(db_details, user_query):
 
 def generate_sql_with_gemini(prompt):
     try:
-        genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+        load_dotenv()
+
+
+        genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
         
         generation_config = {
             "temperature": 1,
@@ -143,24 +120,56 @@ def retrieve_relevant_chunks(query, index, chunks, embedder, top_k=5):
     distances, indices = index.search(query_embedding, top_k)
     retrieved_chunks = [chunks[idx] for idx in indices[0]]
     return retrieved_chunks
+   
+
+def dbConnection():
+    
+    # Define connection parameters
+    DATABASE_URI = 'mysql+mysqlconnector://root:root@localhost/emp'
+
+    # Create an engine to connect to the MySQL database
+    engine = create_engine(DATABASE_URI)
+    metadata = MetaData()
+    metadata.reflect(bind=engine)
 
 
-# def execute_raw_query(query):
-#     """Execute a raw SQL query and return the results"""
-#     DATABASE_URI = 'mysql+mysqlconnector://root:root@localhost/emp'
-#     engine = create_engine(DATABASE_URI)
+   
 
-#     try:
-#         with engine.connect() as connection:
-#             sql = text(query)
-#             result = connection.execute(sql)
-#             rows = result.fetchall()
-#             df = pd.DataFrame(rows, columns=result.keys())
-#             return df
-#     except Exception as e:  # Use a generic exception to catch potential SQLAlchemy errors
-#         print(f"Error executing SQL query: {e}")
-#         return pd.DataFrame()
-       
+
+    for table in metadata.tables.values():
+        print(f"Table: {table.name}")
+        for column in table.columns:
+            print(f"  Column: {column.name} - {column.type}")
+    from sqlalchemy import inspect
+
+    inspector = inspect(engine)
+
+    # Get table names
+    tables = inspector.get_table_names()
+    print(f"Tables: {tables}")
+
+    # Get detailed info about each table
+    for table_name in tables:
+        print(f"\nTable: {table_name}")
+        columns = inspector.get_columns(table_name)
+        for column in columns:
+            print(f"  Column: {column['name']} - {column['type']}")
+
+        # Get primary keys
+        pks = inspector.get_pk_constraint(table_name)
+        print(f"  Primary Keys: {pks['constrained_columns']}")
+
+        # Get indexes
+        indexes = inspector.get_indexes(table_name)
+        for index in indexes:
+            print(f"  Index: {index['name']} - {index['column_names']}")
+    # Foreign keys
+    for table_name in tables:
+        foreign_keys = inspector.get_foreign_keys(table_name)
+        for fk in foreign_keys:
+            print(f"Foreign Key: {fk['constrained_columns']} references {fk['referred_table']}.{fk['referred_columns']}")
+
+
 
 def execute_raw_query(query):
    """Execute a raw SQL query and return the results"""
@@ -183,6 +192,26 @@ def execute_raw_query(query):
    finally:
         con.close()
 
+
+def execute_raw_query_alchemy(query):
+    """Execute a raw SQL query and return the results"""
+    
+    # Create the SQLAlchemy engine
+    engine = create_engine('mysql+mysqlconnector://root:root@localhost/emp')
+    
+    try:
+        # Use pandas to execute the query and fetch results into a DataFrame
+        with engine.connect() as connection:
+            df = pd.read_sql_query(query, connection)
+        return df
+    
+    except Exception as e:
+        print(f"Error executing SQL query: {e}")
+        return pd.DataFrame()
+
+
+def getDBSchema():
+    pass
 
 st.title("DB Bot")
 
@@ -217,10 +246,9 @@ if st.button("Generate SQL"):
         
         # Make API call to Google Gemini with the generated prompt
         generated_sql = generate_sql_with_gemini(prompt)
-        print("hi")
-        print(generated_sql)
         print(type(generated_sql))
-        results=execute_raw_query(generated_sql)
+        print(type(generated_sql))
+        results=execute_raw_query_alchemy(generated_sql)
         if not results.empty:
            st.dataframe(results)
         else:

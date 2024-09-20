@@ -1,15 +1,11 @@
 import json
-from dotenv import load_dotenv
 from sqlalchemy import create_engine, inspect
 from chromadb.config import Settings
 import chromadb
-import google.generativeai as genai
 import Configs
-
-
-
 # Define connection parameters
 DATABASE_URI = 'mysql+mysqlconnector://root:root@localhost/emp'
+
 
 # Define connetion parameters
 username = Configs.username
@@ -18,12 +14,13 @@ host = Configs.host
 port =Configs.port   # Default MySQL port
 database = Configs.database
 
+
 # Construct the DATABASE_URI for SAP HANA using hdbcli
 
 DATABASE_URI = f'hana+hdbcli://{username}:{password}@{host}:{port}/?databaseName={database}'
 
 
-client = chromadb.PersistentClient(path='./chromaGemini1')
+client = chromadb.PersistentClient(path='./chroma')
 import os
 print(os.getcwd()) 
 try:
@@ -87,72 +84,3 @@ print("Meta Data:::::::::",metadata)
 # # Store the schema info in a JSON file
 # with open("schema_info.json", "w") as f:
 #     json.dump(schema_info, f, indent=4)
-
-
-
-
-import faiss
-from sentence_transformers import SentenceTransformer
-import numpy as np
-load_dotenv()
-genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
-
-def get_gemini_embeddings(texts):
-    embeddings = []
-    for text in texts:
-        result = genai.embed_content(
-            model="models/text-embedding-004",
-            content=text,
-            task_type="retrieval_document",
-            title="Embedding of IWM"
-        )
-        embeddings.append(result['embedding'])
-    return np.array(embeddings)
-    
-def embed(): 
-   
-    chunk_embeddings =get_gemini_embeddings(chunks)
-
-    # Ensure embeddings are a numpy array
-    assert isinstance(chunk_embeddings, np.ndarray)
-    
-    # Assuming 'collection' is an instance of a vector store or similar object
-    collection.add(
-        documents=chunks,              # Chunks of text
-        embeddings=chunk_embeddings,   # Corresponding embeddings
-        metadatas=metadata,            # Metadata associated with each chunk
-        ids=[str(i) for i in range(len(chunks))]  # Unique IDs for each chunk
-    )
-
-
-    # Create FAISS index
-    d = chunk_embeddings.shape[1]  # Dimension of the embeddings
-    faiss_index = faiss.IndexFlatL2(d)
-    #  Add embeddings to the FAISS index
-    faiss_index.add(np.array(chunk_embeddings))
-
-
-
-    # Store index (optional)
-    faiss.write_index(faiss_index, "chunk_embeddings.index")
-    # If separate index for relationships:
-    # faiss.write_index(relationship_faiss_index, "relationship_embeddings.index")
-    print("Done..................")
-    return faiss_index
-
-
-
-
-
-faiss_index=embed()
-# Example query
-query = "TASKS and owners"
-query_embedding = get_gemini_embeddings([query])
-
-# Search the FAISS index
-D, I = faiss_index.search(query_embedding, k=3)  # k is the number of nearest neighbors you want
-
-# I contains the indices of the closest embeddings, and D their corresponding distances
-for idx in I[0]:
-    result = collection.get(ids=[str(idx)])
-    print(f"Similar Chunk: {result['documents'][0]}")
